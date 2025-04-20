@@ -1,0 +1,10 @@
+# default-jobs.discron
+#
+# Discron-Format:
+# [IDENTIFICATION-NAME]	 	[MINUTES]	 [HOURS]	 [DAYS]		 [MONTHS]	 [WEEKDAY]	 [COMMAND]
+#
+
+audio-renditions-sync	*		*		*		*		* 		echo "#/mnt/daten_local/Persönlich/Audio-Produktion/Renditions/bin/sync"
+  x         			*		*		*		*		*		echo "This is a message from the editor " --                                      \t\t "k"
+ y          			*		*		*		*		*		date '+%S'
+1					*		*		*		*		* 		"/mnt/daten_local/Persönlich/     /SCRIPT"

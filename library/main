@@ -1,0 +1,266 @@
+#!/bin/bash
+
+function run ()
+{
+	lock_file="/tmp/delayed-discron.lock"
+	exec 9>| "$lock_file"
+
+	if ! flock -n 9; then
+		printf 'Another instance is running…\n'
+		$debug && printf >&2 'Cannot acquire lock, giving up on "%s".\n' "$lock_file"
+
+		exit 1
+	fi # this now runs under the lock until 9 is closed (it will be closed automatically when the script ends)
+    $debug && printf >&2 'Successfully acquired main lock "%s".\n' "$lock_file"
+
+	cd -- "/tmp" || exit
+	crontab_file="$1"
+
+	if [[ -z "$1" ]]; then
+		echo >&2 "Error: no discron file!"
+
+		exit 1
+	fi
+
+	# @source: https://github.com/morganhk/BashCronParse
+	readarray -t lines < "$crontab_file"
+
+	for line in "${lines[@]}"; do
+		index=0
+
+		if [[ "${line:0:1}" == "#" ]]; then
+			continue
+		fi
+
+		if [[  "$line" =~ ^[[:space:]]*$ ]]; then
+			continue
+		fi
+
+		IFS=$'\t' read -r -a segments < <(echo "$line")
+		for (( i=0; i < ${#segments[@]}; i++ )); do
+			segments[i]=$(trim_string "${segments[i]}")
+		done
+
+		if (( ${#segments[@]} <= 6 )); then
+			echo >&2 "Error: malformed discron specification:"
+			names=(NAME MINUTE HOUR DAY MONTH WEEKDAY COMMAND)
+			echo >&2 -ne "Expected:\t"
+			for (( i=0; i < ${#names[@]}; i++ )); do
+				name="${names[i]}"
+				echo >&2 -ne "($i) $name\t\t"
+			done
+			echo >&2
+			echo >&2 -ne "Given:\t\t"
+			for (( i=0; i < ${#segments[@]}; i++ )); do
+				segment="${segments[i]}"
+				echo >&2 -ne "($i) $segment\t\t"
+			done
+			echo >&2
+			echo >&2
+
+			exit 1
+		fi
+
+		name="${segments[0]}"
+		waiting=true
+		command=""
+		i=1
+
+		# check if job is late and needs to be run
+		state_file="$state_directory/$name.state"
+
+#        if [[ -f "$state_file" ]]; then
+#        	is_late=false
+#
+#        	# echo "$query" | grep replace with <<< "$query" | grep
+#
+#        	# @TODO read discron tab format for job
+#        	# set here debug values dummy values
+#        	# 0 * * * * is job every hour
+#        	job_minutes="5"
+#        	job_hours="14"
+#        	job_day="9"
+#        	job_months="*"
+#        	#job_weekdays="*"
+#        	# END @TODO
+#
+#
+#
+#
+#			job_day="9" ##
+#			last_day="$(date --reference="$state_file" "%d")"
+#			today=$(date "+%d")
+#
+#			# last run was day 1
+#			# job should run on day 4
+#			# today is day 10
+#			if [[ "$job_day" != "*" ]]; then
+# 				d=$((today-job_day))
+#
+# 			fi
+#
+#
+#
+#	exit
+#        	file_modified_time="$(stat --format="%Y" -- "$state_file")"
+#        	now=$(date "+%s")
+#			time_difference_in_seconds_of_last_execution=$(printf '%d\n' $((now-file_modified_time)))
+#        	counted_minutes="$seconds" # algorithm: count down
+#
+#        	if [[ "$job_months" != "*" ]]; then
+#        		counted_minutes=$((counted_minutes - (job_months-months_now)))
+#        	fi
+#
+#			if (( counted_minutes < 0 )); then
+#				echo "IS LATE"
+#			else
+#				echo "IS NOT LATE"
+#			fi
+#
+#			exit
+#
+#
+#        	file_modified_time="$(($(stat -c "%Y" -- "$state_file") + 0))"
+#        	now=$(date "+%s")
+#
+#        	$debug & echo -e "now: $now\told: $file_modified_time" | tee -a "$log"
+#        	$debug & printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / 1))" "seconds" | tee -a "$log"
+#       		$debug & printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / 60))" "minutes" | tee -a "$log"
+#        	$debug & printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60) ))" "hours" | tee -a "$log"
+#        	$debug & printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60*24) ))" "days" | tee -a "$log"
+#        	$debug & printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60*24) ))" "months" | tee -a "$log"
+#
+#        	seconds=$(printf '%d\n' $(((now-file_modified_time) / 1)))
+#        	minutes=$(printf '%d\n' $(((now-file_modified_time) / 60)))
+#        	hours=$(printf '%d\n' $(((now-file_modified_time) / (60*60))))
+#        	days=$(printf '%d\n' $(((now-file_modified_time) / (60*60*24))))
+#        	#months=$(printf '%d\n' $(((now-file_modified_time) / (60*60*24*days_in_month))))
+#
+#			echo "is job $name too late? …and needs to be run again regardless of discron-tab?"
+#			if (( seconds >= 60 )); then
+#				echo -e "SECONDS: LATE.\t\t $seconds > 60" | tee -a "$log"
+#				is_late=true
+#			else
+#				echo -e "SECONDS: OKAY.\t\t $seconds <= 60" | tee -a "$log"
+#			fi
+#
+#			if (( minutes >= 60 )); then
+#            	echo -e "MINUTES: LATE.\t\t $minutes > 60" | tee -a "$log"
+#            	is_late=true
+#            else
+#            	echo -e "MINUTES: OKAY.\t\t $minutes <= 60" | tee -a "$log"
+#            fi
+#
+#			if (( hours >= 1 )); then
+#            	echo -e "HOURS: LATE.\t\t $hours > 1" | tee -a "$log"
+#            	is_late=true
+#            else
+#            	echo -e "HOURS: OKAY.\t\t $hours <= 1" | tee -a "$log"
+#            fi
+#
+#if [[ -f "$state_file" ]]; then
+#	file_modified_time="$(($(stat -c "%Y" -- "$state_file") + 0))"
+#else
+#	file_modified_time=0
+#fi
+#now=$(date "+%s")
+#echo -e "now: $now\told: $file_modified_time" | tee -a "$log"
+#printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / 1))" "seconds" | tee -a "$log"
+#printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / 60))" "minutes" | tee -a "$log"
+#printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60) ))" "hours" | tee -a "$log"
+#printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60*24) ))" "days" | tee -a "$log"
+#printf '%(%F %T)T minus %(%F %T)T is %d %s\n' "$now" "$file_modified_time" "$(((now-file_modified_time) / (60*60*24) ))" "months" | tee -a "$log"
+#exit
+#			continue # @todo
+#
+#        	if $is_late; then
+#        		index=5
+#        	fi
+#        fi
+
+		for (( ; i < ${#segments[@]} ; i++ )); do
+			segment="${segments[i]}"
+			segment_stripped="${segment##*/}"
+
+			if (( index == 0 )); then
+				minutes="$(date "+%M")"
+
+				if echo "$segment" | grep '^\*/[0-9]\{1,2\}' > "/dev/null"; then
+					$debug && echo "p $minutes % $segment_stripped == $(( minutes%segment_stripped  )) == 0 ?"
+					(( minutes%segment_stripped != 0 )) && break
+				fi
+				if echo "$segment" | grep '^[0-9]\{1,2\}' > "/dev/null"; then
+					$debug && echo "x $minutes == $segment ?"
+					(( minutes != segment )) && break
+				fi
+
+			elif (( index == 1 )); then
+				hours="$(date "+%k")"
+
+				if echo "$segment" | grep '^\*/[0-9]\{1,2\}' > "/dev/null"; then
+					(( hours%segment_stripped != 0 )) && break
+				fi
+				if echo "$segment" | grep '^[0-9]\{1,2\}' > "/dev/null"; then
+					(( hours != segment )) && break
+				fi
+
+			elif (( index == 2 )); then
+				day="$(date "+%d")"
+
+				if echo "$segment" | grep '^\*/[0-9]\{1,2\}' > "/dev/null"; then
+					(( day%segment_stripped != 0 )) && break
+				fi
+				if echo "$segment" | grep '^[0-9]\{1,2\}' > "/dev/null"; then
+					(( day != segment )) && break
+				fi
+
+			elif (( index == 3 )); then
+				month="$(date "+%m")"
+
+				if echo "$segment" | grep '^\*/[0-9]\{1,2\}' > "/dev/null"; then
+					(( month%segment_stripped != 0 )) && break
+				fi
+				if echo "$segment" | grep '^[0-9]\{1,2\}' > "/dev/null"; then
+					(( month != segment )) && break
+				fi
+
+			elif (( index == 4 )); then
+				weekday="$(date "+%u")"
+
+				if echo "$segment" | grep '^\*/[0-9]\{1,2\}' > "/dev/null"; then
+					(( weekday%segment_stripped != 0 )) && break
+				fi
+				if echo "$segment" | grep '^[0-9]\{1,2\}' > "/dev/null"; then
+					(( weekday != segment )) && break
+				fi
+			elif (( index == 5 )); then
+				command="$segment"
+
+				if [[ -z "$command" ]]; then
+					echo >&2 "Error: command is empty"
+
+					break
+				fi
+
+				waiting=false
+			else
+				echo >&2 "Error: malformed discron specification: $segment"
+				waiting=true
+
+				break
+			fi
+
+			index=$((index+1))
+		done
+
+		if ! $waiting; then
+			error_log_file="$log_directory/$name.error.log"
+			full_log_file="$log_directory/$name.log"
+			$debug && echo "STARTING: $name will now be handled."
+
+			( nohup "$__script_path/library/execute-command" "$__script_path" "$name" "$command" < "/dev/null" 3>&2 2>&1 1>&3 3>&- | tee -a "$error_log_file") | tee -a "$full_log_file" 2>&1 & disown
+		else
+			$debug && echo "WAITING: it's not time for $name to be executed…"
+		fi
+	done
+}

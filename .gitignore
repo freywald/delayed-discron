@@ -1,0 +1,4 @@
+/.idea
+/var/logs/*
+/var/locks/*
+/var/state/*
