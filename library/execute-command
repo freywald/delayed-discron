@@ -17,7 +17,7 @@ if ! flock -n 1000; then
 	printf 'An instance of %s is still running…\n' "$name" | tee -a "$log"
 	$debug && printf >&2 'Cannot acquire lock, giving up on "%s".\n' "$lock_file"
 
-	exit  1
+	exit 1
 fi # this now runs under the lock until 1000 is closed (it will be closed automatically when the script ends)
 
 $debug && printf 'Successfully acquired main lock "%s".\n' "$lock_file"
