@@ -1,0 +1,40 @@
+#!/bin/bash
+
+source -- "$__script_path/library/base"
+source -- "$__script_path/configuration/defaults"
+source -- "$__script_path/library/main"
+
+name="$1"; shift
+command="$1"; shift
+
+lock_file="$locks_directory/$name.lock"
+state_file="$state_directory/$name.state"
+
+exec 10>| "$lock_file"
+if ! flock -n 10; then
+	printf 'An instance of %s is still running…\n' "$name" | tee -a "$log"
+	$debug && printf >&2 'Cannot acquire lock, giving up on "%s".\n' "$lock_file"
+
+	exit 1
+fi # this now runs under the lock until 10 is closed (it will be closed automatically when the script ends)
+
+$debug && printf 'Successfully acquired main lock "%s".\n' "$lock_file"
+
+$debug && echo "CALL: $name"
+$debug && echo "COMMAND: $command"
+
+if $simulate; then
+	touch -- "$state_file"
+	$debug && echo "SIMULATION ENABLED!" | tee -a "$log"
+else
+	$debug && echo "EXECUTING!" | tee -a "$log"
+	touch -- "$state_file" && bash -c "$command" | tee -a "$log"
+	return_value=$?
+
+	if ((return_value > 0)); then
+		! $debug && echo "FAILED!" | tee -a "$log"
+		$debug && echo "FAILED! WITH RETURN VALUE [$return_value]" | tee -a "$log"
+	else
+		echo "SUCCESS!" | tee -a "$log"
+	fi
+fi

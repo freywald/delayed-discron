@@ -1,0 +1,35 @@
+#!/bin/bash
+
+#
+# This script needs to be called every minute ongoing.
+# This will run all of the discron jobs.
+#
+
+source -- "$(realpath "$(dirname -- "${BASH_SOURCE[-1]}")/../")/library/base"
+set_script_path
+
+check_colors
+
+source -- "$__script_path/configuration/defaults"
+
+date="$(date '+%d.%m.%Y %H:%M:%S')"
+
+echo -e "███████████████████████████████████████████████████████████████████████████████" | tee -a "$log"
+echo -e "DISCRON\t\t\t\t\t\t\t\t\t\t\t\t\t\t$date\n" | tee -a "$log"
+
+if [[ -z "${1:-}" ]]; then
+	discron_file="$__script_path/configuration/default-jobs.discron"
+else
+	discron_file="$(realpath --quiet -- "$1")"
+fi
+
+if [[ ! -f "$discron_file" ]]; then
+	#echo>&2 "ERROR: $(basename -- "$0"): discron file \"$discron_file\" does not exist." | tee -a "$log"
+	error "ERROR: $(basename -- "$0"): discron file \"$discron_file\" does not exist." | tee -a "$log"
+
+	exit 1
+fi
+
+source -- "$__script_path/library/main"
+
+run_discron_tab_file "$discron_file" 2>&1 | tee -a "$log"

@@ -1,0 +1,16 @@
+#!/bin/bash
+
+log_directory="$__script_path/var/logs"
+mkdir --parents -- "$log_directory"
+
+locks_directory="$__script_path/var/locks"
+mkdir --parents -- "$locks_directory"
+
+state_directory="$__script_path/var/state"
+mkdir --parents -- "$state_directory"
+
+log="$log_directory/delayed-discron.log"
+
+debug=false
+simulate=false
+
